@@ -1,0 +1,2 @@
+source /home/circuito/AOI/suman/pump_timer_web/build/bootloader/gdbinit/symbols
+source /home/circuito/AOI/suman/pump_timer_web/build/bootloader/gdbinit/connect
