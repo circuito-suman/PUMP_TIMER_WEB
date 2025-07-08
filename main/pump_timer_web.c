@@ -15,6 +15,7 @@
 #include "esp_timer.h"
 #include "esp_spiffs.h"
 
+
 #define RELAY_START_GPIO  2
 #define RELAY_STOP_GPIO   3
 #define WIFI_SSID         "ESP32C3_Pump"
@@ -46,6 +47,13 @@ static int relay_pulse_pin = -1;
 static nvs_handle_t my_nvs_handle;
 static const char *TAG = "PUMP";
 
+static bool cycleEnabled = false;
+static uint64_t cycleInterval = 0; // ms
+static uint64_t nextCycleMillis = 0;
+static uint64_t cycleTimeLeft = 0;
+
+static bool emergencyLock = false;
+
 void init_spiffs() {
     esp_vfs_spiffs_conf_t conf = {
         .base_path = "/spiffs",
@@ -64,6 +72,8 @@ void load_nvs() {
     nvs_get_u64(my_nvs_handle, "totalManTime", &totalManualRunTime);
     nvs_get_u64(my_nvs_handle, "autoDuration", &autoDuration);
     nvs_get_u32(my_nvs_handle, "lastMode", (uint32_t*)&currentMode);
+    nvs_get_u8(my_nvs_handle, "cycleEnabled", (uint8_t*)&cycleEnabled);
+    nvs_get_u64(my_nvs_handle, "cycleInterval", &cycleInterval);
 }
 void save_nvs() {
     nvs_set_u32(my_nvs_handle, "startCount", pumpStartCount);
@@ -72,6 +82,8 @@ void save_nvs() {
     nvs_set_u64(my_nvs_handle, "totalManTime", totalManualRunTime);
     nvs_set_u64(my_nvs_handle, "autoDuration", autoDuration);
     nvs_set_u32(my_nvs_handle, "lastMode", currentMode);
+    nvs_set_u8(my_nvs_handle, "cycleEnabled", cycleEnabled);
+    nvs_set_u64(my_nvs_handle, "cycleInterval", cycleInterval);
     nvs_commit(my_nvs_handle);
 }
 
@@ -96,19 +108,25 @@ void pulse_relay(int pin) {
 // --- PUMP LOGIC ---
 void start_pump() {
     if (!pumpRunning) {
+        ESP_LOGI(TAG, "Pump ON (start_pump called)");
         pulse_relay(RELAY_START_GPIO);
         pumpRunning = true;
         pumpStartMillis = esp_timer_get_time() / 1000; // ms
         pumpStartCount++;
         save_nvs();
-        if (!cycleInProgress) cycleInProgress = true;
+        if (!cycleInProgress) {
+            cycleInProgress = true;
+            ESP_LOGI(TAG, "Cycle started (cycleInProgress set)");
+        }
     }
 }
 void stop_pump() {
     if (pumpRunning) {
+        ESP_LOGI(TAG, "Pump OFF (stop_pump called)");
         if (currentMode == MANUAL) {
             manualRunTime = (esp_timer_get_time() / 1000) - pumpStartMillis;
             totalManualRunTime += manualRunTime;
+            ESP_LOGI(TAG, "Manual run time this cycle: %llu ms, total: %llu ms", manualRunTime, totalManualRunTime);
             save_nvs();
             manualRunTime = 0;
         }
@@ -119,6 +137,7 @@ void stop_pump() {
         save_nvs();
         if (cycleInProgress) {
             irrigationCycleCount++;
+            ESP_LOGI(TAG, "Irrigation cycle count incremented: %" PRIu32, irrigationCycleCount);
             save_nvs();
             cycleInProgress = false;
         }
@@ -151,11 +170,17 @@ esp_err_t status_get_handler(httpd_req_t *req) {
         "\"pumpStopCount\":%" PRIu32 ","
         "\"irrigationCycleCount\":%" PRIu32 ","
         "\"manualRunTime\":%llu,"
-        "\"totalManualRunTime\":%llu"
+        "\"totalManualRunTime\":%llu,"
+        "\"cycleEnabled\":%d,"
+        "\"cycleInterval\":%llu,"
+        "\"cycleTimeLeft\":%llu,"
+        "\"emergencyLock\":%d"
         "}",
         currentMode, autoDuration, autoLeft, pumpRunning ? 1 : 0, runTime,
         pumpStartCount, pumpStopCount, irrigationCycleCount,
-        manualTimeToSend, totalManualRunTime
+        manualTimeToSend, totalManualRunTime,
+        cycleEnabled ? 1 : 0, cycleInterval, cycleTimeLeft,
+        emergencyLock ? 1 : 0
     );
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, resp, strlen(resp));
@@ -177,6 +202,7 @@ esp_err_t setmode_post_handler(httpd_req_t *req) {
                 manualRunTime = 0;
                 currentMode = new_mode;
                 save_nvs();
+                emergencyLock = false; // Allow operation after mode change
             }
         }
     }
@@ -234,6 +260,74 @@ esp_err_t autostart_post_handler(httpd_req_t *req) {
     httpd_resp_send(req, "OK", 2);
     return ESP_OK;
 }
+
+esp_err_t setcycle_post_handler(httpd_req_t *req) {
+    char buf[64];
+    int ret = httpd_req_get_url_query_str(req, buf, sizeof(buf));
+    uint64_t now = esp_timer_get_time() / 1000;
+    if (ret == ESP_OK) {
+        char enable_str[8], interval_str[16];
+        bool enable_changed = false, interval_changed = false;
+        if (httpd_query_key_value(buf, "enable", enable_str, sizeof(enable_str)) == ESP_OK) {
+            cycleEnabled = atoi(enable_str) ? true : false;
+            enable_changed = true;
+        }
+        if (httpd_query_key_value(buf, "interval", interval_str, sizeof(interval_str)) == ESP_OK) {
+            cycleInterval = strtoull(interval_str, NULL, 10);
+            interval_changed = true;
+        }
+        // If enabling or changing interval, and not running, set next cycle
+        if (cycleEnabled && !pumpRunning && cycleInterval > 0 && (enable_changed || interval_changed)) {
+            nextCycleMillis = now + cycleInterval;
+        }
+        save_nvs();
+    }
+    httpd_resp_send(req, "OK", 2);
+    return ESP_OK;
+}
+
+esp_err_t emergency_stop_post_handler(httpd_req_t *req) {
+    if (!emergencyLock) {
+        ESP_LOGW(TAG, "EMERGENCY STOP triggered!");
+        stop_pump();
+        autoActive = false;
+        autoTimeLeft = 0;
+        cycleEnabled = false;
+        cycleTimeLeft = 0;
+        nextCycleMillis = 0;
+        emergencyLock = true;
+        save_nvs();
+        httpd_resp_sendstr(req, "EMERGENCY_STOPPED");
+    } else {
+        ESP_LOGW(TAG, "EMERGENCY STOP released!");
+        emergencyLock = false;
+        save_nvs();
+        httpd_resp_sendstr(req, "EMERGENCY_RELEASED");
+    }
+    return ESP_OK;
+}
+
+// esp_err_t reset_post_handler(httpd_req_t *req) {
+//     ESP_LOGI(TAG, "Resetting all timers and counts");
+//     stop_pump();
+//     pumpStartCount = 0;
+//     pumpStopCount = 0;
+//     irrigationCycleCount = 0;
+//     manualRunTime = 0;
+//     totalManualRunTime = 0;
+//     pumpRunTime = 0;
+//     autoDuration = 0;
+//     autoTimeLeft = 0;
+//     autoActive = false;
+//     cycleEnabled = false;
+//     cycleInterval = 0;
+//     nextCycleMillis = 0;
+//     cycleTimeLeft = 0;
+//     emergencyLock = false; // Allow operation after reset
+//     save_nvs();
+//     httpd_resp_send(req, "OK", 2);
+//     return ESP_OK;
+// }
 
 // --- Serve static files from SPIFFS ---
 esp_err_t static_file_get_handler(httpd_req_t *req) {
@@ -304,6 +398,9 @@ void start_webserver() {
     httpd_uri_t autostart_uri = { .uri = "/autostart", .method = HTTP_POST, .handler = autostart_post_handler, .user_ctx = NULL };
     httpd_register_uri_handler(server, &autostart_uri);
 
+    httpd_uri_t setcycle_uri = { .uri = "/setcycle", .method = HTTP_POST, .handler = setcycle_post_handler, .user_ctx = NULL };
+    httpd_register_uri_handler(server, &setcycle_uri);
+
 httpd_uri_t index_uri = {
     .uri = "/",
     .method = HTTP_GET,
@@ -311,6 +408,11 @@ httpd_uri_t index_uri = {
     .user_ctx = NULL
 };
 httpd_register_uri_handler(server, &index_uri);
+
+httpd_uri_t emergency_stop_uri = { .uri = "/emergencystop", .method = HTTP_POST, .handler = emergency_stop_post_handler, .user_ctx = NULL };
+httpd_register_uri_handler(server, &emergency_stop_uri);
+
+
 
 
 
@@ -362,6 +464,11 @@ void gpio_init() {
 void app_main(void) {
     ESP_ERROR_CHECK(nvs_flash_init());
     gpio_init();
+
+    // Safety: Always turn pump off at boot
+    ESP_LOGW(TAG, "Bootup: Forcing pump OFF for safety");
+    pulse_relay(RELAY_STOP_GPIO);
+
     wifi_init_softap();
     init_spiffs();
     load_nvs();
@@ -371,9 +478,35 @@ void app_main(void) {
     // Main loop for auto mode timer
     while (1) {
         uint64_t now = esp_timer_get_time() / 1000;
-        if (currentMode == AUTO && autoActive && pumpRunning) {
-            if (now - pumpStartMillis >= autoTimeLeft) {
-                stop_pump();
+        if (!emergencyLock) {
+            // If pump is running in AUTO mode, check if time expired
+            if (currentMode == AUTO && autoActive && pumpRunning) {
+                ESP_LOGI(TAG, "AUTO mode: Pump running, time left: %llu ms", (now - pumpStartMillis < autoTimeLeft) ? autoTimeLeft - (now - pumpStartMillis) : 0);
+                if (now - pumpStartMillis >= autoTimeLeft) {
+                    ESP_LOGI(TAG, "AUTO mode: Auto time expired, stopping pump");
+                    stop_pump();
+                    autoActive = false;
+                    if (cycleEnabled && cycleInterval > 0) {
+                        nextCycleMillis = now + cycleInterval;
+                        ESP_LOGI(TAG, "Cycle enabled: Next cycle scheduled in %llu ms", cycleInterval);
+                    }
+                }
+            }
+            // If in AUTO mode, cycle enabled, pump is off, and interval elapsed, start next cycle
+            if (currentMode == AUTO && cycleEnabled && !pumpRunning && cycleInterval > 0 && autoDuration > 0) {
+                if (!autoActive && now >= nextCycleMillis) {
+                    ESP_LOGI(TAG, "Starting next auto cycle");
+                    autoActive = true;
+                    start_pump();
+                    pumpStartMillis = esp_timer_get_time() / 1000;
+                    autoTimeLeft = autoDuration;
+                    cycleTimeLeft = 0;
+                } else if (!autoActive && nextCycleMillis > now) {
+                    cycleTimeLeft = nextCycleMillis - now;
+                    ESP_LOGI(TAG, "Waiting for next cycle: %llu ms left", cycleTimeLeft);
+                }
+            } else if (!pumpRunning) {
+                cycleTimeLeft = 0;
             }
         }
         vTaskDelay(pdMS_TO_TICKS(100));

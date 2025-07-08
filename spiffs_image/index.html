@@ -4,14 +4,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Pump Controller</title>
     <style>
+      :root {
+        --main-bg: #10131a;
+        --card-bg: rgba(24, 28, 38, 0.97);
+        --accent: #b3e5fc;
+        --accent2: #1976d2;
+        --danger: #e53935;
+        --success: #4caf50;
+        --text: #e3f2fd;
+        --shadow: 0 4px 24px 0 rgba(31, 38, 135, 0.18);
+        --radius: 18px;
+      }
+      html,
       body {
-        font-family: "Segoe UI", Arial, sans-serif;
-        background: #10131a;
+        min-height: 100vh;
         margin: 0;
         padding: 0;
+        background: var(--main-bg);
+        color: var(--text);
+        font-family: "Segoe UI", Arial, sans-serif;
+        font-size: 16px;
+        scroll-behavior: smooth;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
         min-height: 100vh;
-        position: relative;
-        overflow-x: hidden;
       }
       .glacier-bg {
         position: fixed;
@@ -27,54 +45,65 @@
           #22304a 100%
         );
         overflow: hidden;
+        pointer-events: none;
       }
       .glacier-bg .mountain {
         position: absolute;
         bottom: 0;
         left: 0;
         width: 100vw;
-        height: 260px;
+        height: 30vh; /* Responsive height, adjust as needed */
+        min-height: 120px;
+        max-height: 320px;
         z-index: 1;
         pointer-events: none;
       }
       .glacier-bg .mountain svg {
-        width: 100vw;
-        height: 260px;
+        width: 100%;
+        height: 100%;
         display: block;
       }
-      .glacier-bg .mountain polygon {
-        filter: drop-shadow(0 0 24px #b3e5fc88) drop-shadow(0 8px 32px #fff4);
-      }
       .container {
-        max-width: 520px;
-        margin: 40px auto;
-        background: rgba(24, 28, 38, 0.97);
-        border-radius: 18px;
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.18);
-        padding: 32px 28px 28px 28px;
+        width: 95vw;
+        max-width: 540px;
+        margin: 48px auto 32px auto;
+        background: var(--card-bg);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 32px 20px 28px 20px;
         position: relative;
         z-index: 2;
         backdrop-filter: blur(2px);
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
       }
       h1 {
         text-align: center;
-        color: #b3e5fc;
+        color: var(--accent);
         letter-spacing: 1px;
-        margin-bottom: 18px;
+        margin-bottom: 8px;
         text-shadow: 0 1px 4px #b3e5fc88, 0 0px 1px #fff4;
+        font-size: 2rem;
       }
       .mode-switch {
         display: flex;
         justify-content: center;
         align-items: center;
-        margin-bottom: 24px;
+        gap: 18px;
+        margin-bottom: 12px;
+      }
+      .mode-label {
+        font-weight: bold;
+        color: var(--accent);
+        text-shadow: 0 1px 2px #b3e5fc66;
+        font-size: 1.1em;
       }
       .switch {
         position: relative;
         display: inline-block;
-        width: 80px;
-        height: 36px;
-        margin: 0 10px;
+        width: 70px;
+        height: 34px;
       }
       .switch input {
         opacity: 0;
@@ -90,14 +119,14 @@
         bottom: 0;
         background: linear-gradient(90deg, #23273a 0%, #b3e5fc 100%);
         transition: 0.4s;
-        border-radius: 36px;
+        border-radius: 34px;
         box-shadow: 0 2px 8px #b3e5fc;
       }
       .slider:before {
         position: absolute;
         content: "";
-        height: 28px;
-        width: 28px;
+        height: 26px;
+        width: 26px;
         left: 4px;
         bottom: 4px;
         background: linear-gradient(145deg, #fff 60%, #b3e5fc 100%);
@@ -109,38 +138,42 @@
         background: linear-gradient(90deg, #b3e5fc 0%, #23273a 100%);
       }
       input:checked + .slider:before {
-        transform: translateX(44px);
+        transform: translateX(36px);
         background: linear-gradient(145deg, #b3e5fc 60%, #fff 100%);
       }
-      .mode-label {
-        margin: 0 10px;
-        font-weight: bold;
-        color: #b3e5fc;
-        text-shadow: 0 1px 2px #b3e5fc66;
+      .card {
+        background: rgba(36, 41, 56, 0.93);
+        border-radius: 14px;
+        box-shadow: 0 2px 12px #1976d244;
+        padding: 18px 14px 14px 14px;
+        margin-bottom: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        transition: box-shadow 0.2s;
+      }
+      .card:focus-within,
+      .card:hover {
+        box-shadow: 0 4px 24px #1976d288;
       }
       button {
-        font-size: 1.1em;
+        font-size: 1.08em;
         margin: 8px 8px 8px 0;
-        padding: 12px 32px;
-        border-radius: 12px;
+        padding: 12px 28px;
+        border-radius: 10px;
         border: none;
-        outline: none;
         background: linear-gradient(180deg, #b3e5fc 0%, #1976d2 100%);
         color: #10131a;
         font-weight: bold;
         box-shadow: 0 2px 8px #b3e5fc44, 0 1px 0 #fff3 inset;
-
         transition: background 0.2s, box-shadow 0.2s, color 0.2s, transform 0.1s;
         cursor: pointer;
-        position: relative;
-        overflow: hidden;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.4px;
       }
       button:hover:not(:disabled) {
         background: linear-gradient(180deg, #1976d2 0%, #b3e5fc 100%);
         color: #fff;
         box-shadow: 0 4px 12px #b3e5fc66, 0 1px 0 #fff3 inset;
-
         transform: translateY(-2px) scale(1.03);
       }
       button:active:not(:disabled) {
@@ -155,14 +188,14 @@
         cursor: not-allowed;
       }
       input[type="number"] {
-        width: 60px;
-        padding: 10px 8px;
+        width: 55px;
+        padding: 9px 7px;
         margin: 0 6px 0 0;
         border-radius: 8px;
         border: 1.5px solid #b3e5fc;
         background: linear-gradient(180deg, #fff 60%, #e3f2fd 100%);
         color: #1976d2;
-        font-size: 1.1em;
+        font-size: 1.08em;
         box-shadow: 0 2px 8px #b3e5fc;
         outline: none;
         transition: border 0.2s, box-shadow 0.2s;
@@ -173,38 +206,75 @@
         box-shadow: 0 4px 16px #1976d2;
         background: linear-gradient(180deg, #e3f2fd 0%, #fff 100%);
       }
-      #autoControls label {
+      label {
+        font-weight: 500;
+        color: var(--accent);
+        margin-bottom: 2px;
+      }
+      .status,
+      .counter {
+        font-size: 1.13em;
+        color: var(--accent);
+        margin-bottom: 4px;
+        text-shadow: 0 1px 2px #b3e5fc44;
         display: flex;
         align-items: center;
         gap: 8px;
-        margin-bottom: 10px;
-        font-weight: 500;
-        color: #b3e5fc;
-      }
-      #autoControls input[type="number"] {
-        margin-right: 4px;
-      }
-      #autoControls button {
-        margin-left: 10px;
-      }
-      .status {
-        margin: 10px 0;
-        font-size: 1.2em;
-        color: #b3e5fc;
-        font-weight: bold;
-        text-shadow: 0 1px 2px #b3e5fc44;
-      }
-      .counter {
-        font-size: 1.1em;
-        color: #b3e5fc;
-        margin-bottom: 6px;
-        text-shadow: 0 1px 2px #b3e5fc44;
       }
       hr {
         border: none;
         border-top: 2px solid #b3e5fc;
-        margin: 24px 0;
+        margin: 18px 0;
         opacity: 0.5;
+      }
+      @media (max-width: 600px) {
+        .container {
+          padding: 16px 2vw 18px 2vw;
+        }
+        h1 {
+          font-size: 1.3rem;
+        }
+        .card {
+          padding: 10px 4px 10px 4px;
+        }
+        button {
+          padding: 10px 10px;
+          font-size: 1em;
+        }
+        .mode-label {
+          font-size: 1em;
+        }
+      }
+      /* Smooth fade-in for cards and elements */
+      .card,
+      .counter,
+      .status,
+      .mode-switch,
+      .container {
+        animation: fadein 0.7s;
+      }
+      @keyframes fadein {
+        from {
+          opacity: 0;
+          transform: translateY(24px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      /* Emergency warning */
+      #emergencyWarning {
+        display: none;
+        color: #fff;
+        background: var(--danger);
+        padding: 10px;
+        border-radius: 8px;
+        text-align: center;
+        margin-bottom: 10px;
+        font-weight: bold;
+        letter-spacing: 0.5px;
+        box-shadow: 0 2px 12px #e5393555;
       }
     </style>
     <script>
@@ -214,6 +284,9 @@
       let pumpRunning = false;
       let pumpRunTime = 0;
       let cycleCount = 0;
+      let cycleEnabled = false;
+      let cycleInterval = 0; // ms
+      let cycleTimeLeft = 0;
 
       function fetchStatus() {
         fetch("/status")
@@ -225,6 +298,9 @@
             pumpRunning = data.pumpRunning;
             pumpRunTime = data.pumpRunTime;
             cycleCount = data.cycleCount;
+            cycleEnabled = data.cycleEnabled || false;
+            cycleInterval = data.cycleInterval || 0;
+            cycleTimeLeft = data.cycleTimeLeft || 0;
             document.getElementById("modeSwitch").checked = mode === 1;
             document.getElementById("manualControls").style.opacity =
               mode === 0 ? 1 : 0.5;
@@ -254,6 +330,44 @@
             document.getElementById("totalManualTime").innerText = msToHMS(
               data.totalManualRunTime
             );
+            document.getElementById("cycleTimeLeft").innerText = msToHMS(
+              data.nextCycleIn
+            );
+            document.getElementById("cycleSwitch").checked = cycleEnabled;
+            // Only update the fields if not focused (not being edited)
+            const cycleHrInput = document.getElementById("cycleHr");
+            const cycleMinInput = document.getElementById("cycleMin");
+            if (
+              document.activeElement !== cycleHrInput &&
+              document.activeElement !== cycleMinInput
+            ) {
+              cycleHrInput.value = Math.floor(
+                (cycleInterval / 1000 / 60 / 60) % 24
+              );
+              cycleMinInput.value = Math.floor(
+                (cycleInterval / 1000 / 60) % 60
+              );
+            }
+            document.getElementById("cycleTimeLeft").innerText =
+              msToHMS(cycleTimeLeft);
+            // Emergency UI
+            if (data.emergencyLock) {
+              document.getElementById("emergencyWarning").style.display =
+                "block";
+              let btn = document.getElementById("emergencyBtn");
+              btn.innerText = "RESET EMERGENCY";
+              btn.style.background = "#ffb300";
+              btn.style.color = "#222";
+            } else {
+              document.getElementById("emergencyWarning").style.display =
+                "none";
+              let btn = document.getElementById("emergencyBtn");
+              btn.innerText = "EMERGENCY STOP";
+              btn.style.background = "#e53935";
+              btn.style.color = "#fff";
+            }
+            document.getElementById("rtcTime").innerText =
+              data.rtcTime || "--:--";
           });
       }
       function msToHMS(ms) {
@@ -266,22 +380,47 @@
           .padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
       }
       function setMode(val) {
+        console.log("Setting mode to", val === 1 ? "AUTO" : "MANUAL");
         fetch("/setmode?mode=" + val, { method: "POST" }).then(fetchStatus);
       }
       function manualStart() {
+        console.log("Manual Start button pressed");
         fetch("/manual?cmd=start", { method: "POST" }).then(fetchStatus);
       }
       function manualStop() {
+        console.log("Manual Stop button pressed");
         fetch("/manual?cmd=stop", { method: "POST" }).then(fetchStatus);
       }
       function setAuto() {
         let h = parseInt(document.getElementById("autoHr").value) || 0;
         let m = parseInt(document.getElementById("autoMin").value) || 0;
         let ms = (h * 3600 + m * 60) * 1000;
+        console.log("Setting auto duration to", ms, "ms");
         fetch("/setauto?duration=" + ms, { method: "POST" }).then(fetchStatus);
       }
       function autoStart() {
+        console.log("Auto Start button pressed");
         fetch("/autostart", { method: "POST" }).then(fetchStatus);
+      }
+      function toggleCycle(val) {
+        console.log("Toggling cycle to", val);
+        fetch("/setcycle?enable=" + (val ? 1 : 0), { method: "POST" }).then(
+          fetchStatus
+        );
+      }
+      function setCycle() {
+        let h = parseInt(document.getElementById("cycleHr").value) || 0;
+        let m = parseInt(document.getElementById("cycleMin").value) || 0;
+        let ms = (h * 3600 + m * 60) * 1000;
+        console.log("Setting cycle interval to", ms, "ms");
+        fetch("/setcycle?interval=" + ms, { method: "POST" }).then(fetchStatus);
+      }
+      function resetTimers() {
+        console.log("Reset Timers button pressed");
+        fetch("/reset", { method: "POST" }).then(fetchStatus);
+      }
+      function emergencyStop() {
+        fetch("/emergencystop", { method: "POST" }).then(fetchStatus);
       }
       setInterval(fetchStatus, 1000);
       window.onload = fetchStatus;
@@ -323,19 +462,19 @@
         </label>
         <span class="mode-label">Auto</span>
       </div>
-      <div id="manualControls">
+      <div class="card" id="manualControls">
         <button onclick="manualStart()">Start Pump</button>
         <button onclick="manualStop()">Stop Pump</button>
         <div class="status">Pump Status: <span id="pumpStatus">OFF</span></div>
         <div class="counter">
-          Manual Run Time (this cycle): <span id="manualTime">00:00:00</span>
+          Manual Run Time (this cycle):
+          <span id="manualTime">00:00:00</span>
         </div>
         <div class="counter">
           Total Manual Run Time: <span id="totalManualTime">00:00:00</span>
         </div>
       </div>
-      <hr />
-      <div id="autoControls">
+      <div class="card" id="autoControls">
         <label
           >Set Duration:
           <input type="number" id="autoHr" min="0" max="23" value="0" /> hr
@@ -346,15 +485,70 @@
         <div class="counter">
           Auto Time Left: <span id="autoTime">00:00:00</span>
         </div>
+        <label
+          style="display: flex; align-items: center; gap: 10px; margin-top: 8px"
+        >
+          <span>Enable Auto Cycle</span>
+          <label class="switch">
+            <input
+              type="checkbox"
+              id="cycleSwitch"
+              onchange="toggleCycle(this.checked)"
+            />
+            <span class="slider"></span>
+          </label>
+        </label>
+        <label
+          style="
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+          "
+        >
+          <span>Cycle Interval:</span>
+          <input type="number" id="cycleHr" min="0" max="23" value="0" /> hr
+          <input type="number" id="cycleMin" min="0" max="59" value="5" /> min
+          <button onclick="setCycle()">Set</button>
+        </label>
+        <div class="counter">
+          Next Cycle In: <span id="cycleTimeLeft">--:--:--</span>
+        </div>
       </div>
-      <hr />
-      <div class="counter">
-        Pump Start Count: <span id="startCount">0</span>
+      <div
+        class="card"
+        style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px"
+      >
+        <div class="counter">
+          Pump Start Count: <span id="startCount">0</span>
+        </div>
+        <div class="counter">
+          Pump Stop Count: <span id="stopCount">0</span>
+        </div>
+        <div class="counter" style="grid-column: span 2">
+          Irrigation Cycle Count: <span id="cycleCount">0</span>
+        </div>
       </div>
-      <div class="counter">Pump Stop Count: <span id="stopCount">0</span></div>
-      <div class="counter">
-        Irrigation Cycle Count: <span id="cycleCount">0</span>
+      <div
+        style="
+          display: flex;
+          gap: 10px;
+          justify-content: center;
+          margin: 16px 0;
+        "
+      >
+        <button
+          id="emergencyBtn"
+          onclick="emergencyStop()"
+          style="background: #e53935; color: #fff"
+        >
+          EMERGENCY STOP
+        </button>
       </div>
+      <div id="emergencyWarning">
+        EMERGENCY STOP TRIGGERED! Press again to reset.
+      </div>
+      <div>RTC Time: <span id="rtcTime">--:--</span></div>
     </div>
   </body>
 </html>
